@@ -3,7 +3,7 @@
 FastAPI · MySQL · SQLAlchemy 2 · Alembic · Pydantic v2 · JWT (access + refresh) · RBAC · Stripe (test mode)
 
 Backend only. 50 functional modules, about 245 endpoints, documented in Swagger UI at `/docs`.
-See [`docs/MODULE_COVERAGE.md`](docs/MODULE_COVERAGE.md) for the module-by-module map.
+
 
 ## 1. Setup
 
