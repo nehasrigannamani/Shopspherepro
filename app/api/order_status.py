@@ -10,6 +10,8 @@ from app.models.order_status_history import OrderStatusHistory
 from app.models.user import User, UserRole
 from app.schemas.order_items import OrderStatusHistoryResponse
 from app.services.notify import create_notification
+from app.services.order_fulfilment import sync_items_with_order_status
+from app.services.loyalty import credit_order_points
 
 router = APIRouter(tags=["Order Status"])
 
@@ -84,6 +86,9 @@ def update_order_status(
 
     try:
         order.status = new_status
+        sync_items_with_order_status(db, order, new_status)
+        if new_status == "DELIVERED":
+            credit_order_points(db, order, current_user.id)
 
         db.add(
             OrderStatusHistory(

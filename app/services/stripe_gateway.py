@@ -84,6 +84,16 @@ def retrieve_checkout_session(session_id: str) -> dict:
     return session.to_dict() if hasattr(session, "to_dict") else dict(session)
 
 
+def expire_checkout_session(session_id: str) -> None:
+    """Close an unpaid Checkout Session so it can no longer be paid."""
+    try:
+        stripe.checkout.Session.expire(session_id, api_key=_api_key())
+    except GatewayError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise GatewayError("Could not expire the Stripe session") from exc
+
+
 def construct_event(payload: bytes, signature: str | None) -> dict:
     """Verify the Stripe-Signature header and return the event dict.
 

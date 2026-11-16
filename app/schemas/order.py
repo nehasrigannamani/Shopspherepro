@@ -22,6 +22,8 @@ class CheckoutRequest(BaseModel):
     shipping_postal_code: str | None = Field(default=None, min_length=3, max_length=20)
     shipping_country: str = Field(default="IN", min_length=2, max_length=2)
     notes: str | None = None
+    # Phase 2: loyalty points to spend on this order (0 = none)
+    redeem_points: int = Field(default=0, ge=0, le=10_000_000)
 
     @model_validator(mode="after")
     def require_shipping_address(self):

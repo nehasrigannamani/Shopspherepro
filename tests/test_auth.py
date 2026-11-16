@@ -12,7 +12,7 @@ from tests.conftest import PASSWORD, ROLE_EMAILS, bearer, login, make_user
 def register(client, **overrides):
     payload = {
         "full_name": "New Customer",
-        "email": "new@example.com",
+        "email": "new@test.local",
         "phone": "+919876543210",
         "password": "Sup3rSecret!",
     }
@@ -32,12 +32,12 @@ def test_register_creates_unverified_customer(client, db):
 def test_register_rejects_duplicate_email_and_phone(client):
     assert register(client).status_code == 201
     assert register(client).status_code == 409
-    assert register(client, email="other@example.com").status_code == 409  # same phone
+    assert register(client, email="other@test.local").status_code == 409  # same phone
 
 
 def test_register_normalises_email_case(client):
-    assert register(client, email="Mixed@Example.com").status_code == 201
-    assert register(client, email="mixed@example.com", phone="+919876543211").status_code == 409
+    assert register(client, email="Mixed@Test.Local").status_code == 201
+    assert register(client, email="mixed@test.local", phone="+919876543211").status_code == 409
 
 
 def test_register_validates_phone_and_password(client):
@@ -56,7 +56,7 @@ def test_login_success_returns_access_and_refresh_tokens(client, users):
 
 def test_login_wrong_password_and_unknown_user_look_identical(client, users):
     bad_pw = client.post("/auth/login", json={"email": ROLE_EMAILS[UserRole.CUSTOMER], "password": "wrong"})
-    unknown = client.post("/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+    unknown = client.post("/auth/login", json={"email": "nobody@test.local", "password": "wrong"})
     assert bad_pw.status_code == unknown.status_code == 401
     assert bad_pw.json() == unknown.json()
 
@@ -189,11 +189,11 @@ def test_email_verification_flow(client, db):
 
 def test_resend_verification_only_for_unverified_users(client, db):
     register(client)
-    tokens = login(client, "new@example.com", "Sup3rSecret!")
+    tokens = login(client, "new@test.local", "Sup3rSecret!")
     first = client.post("/auth/resend-verification", headers=bearer(tokens))
     assert first.status_code == 202
 
-    token = _verification_token(db, db.query(User).filter(User.email == "new@example.com").one().id)
+    token = _verification_token(db, db.query(User).filter(User.email == "new@test.local").one().id)
     client.post("/auth/verify-email", json={"token": token})
     assert client.post("/auth/resend-verification", headers=bearer(tokens)).status_code == 409
 

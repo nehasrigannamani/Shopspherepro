@@ -177,9 +177,50 @@ def scheduler_tick() -> dict:
     finally:
         db.close()
 
+    # Release checkout holds that passed their expiry.
+    from app.services.reservations import expire_due_reservations
+
+    db = SessionLocal()
+    try:
+        expired_holds = expire_due_reservations(db)
+    finally:
+        db.close()
+
+    # Payments: retry approved refunds and time out abandoned payments (best effort; never fatal).
+    db = SessionLocal()
+    try:
+        from app.services.payment_reconciliation import reconcile_pending
+        from app.services.payment_refunds import process_approved_refunds
+
+        payments_summary = {
+            "refunds": process_approved_refunds(db, None, 10),
+            "reconcile": reconcile_pending(db, None, limit=10),
+        }
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        payments_summary = {"error": True}
+    finally:
+        db.close()
+
+    # Loyalty points past their expiry date.
+    db = SessionLocal()
+    try:
+        from app.services.loyalty import expire_due as expire_points
+
+        expired_points = expire_points(db, limit=500)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        expired_points = -1
+    finally:
+        db.close()
+
     return {
         "scheduled_jobs": scheduled,
         "jobs_run": len(set(pending + retries)),
         "retried": retries,
         "notification_dispatch": dispatch,
+        "expired_reservations": expired_holds,
+        "payments": payments_summary,
+        "expired_point_lots": expired_points,
     }

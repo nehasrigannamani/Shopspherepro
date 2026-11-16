@@ -45,13 +45,21 @@ engine = create_engine(
 )
 SessionLocal.configure(bind=engine)
 
-ROLE_EMAILS = {role: f"{role.value.lower()}@example.com" for role in UserRole}
+ROLE_EMAILS = {role: f"{role.value.lower()}@test.local" for role in UserRole}
 
 
 @pytest.fixture(autouse=True)
 def fresh_database():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    from app.core.ratelimit import reset_rate_limits
+
+    reset_rate_limits()
     yield
 
 
@@ -115,7 +123,7 @@ def h(client, users):
 
 @pytest.fixture
 def second_customer(db, client):
-    user = make_user(db, "customer2@example.com")
+    user = make_user(db, "customer2@test.local")
     return user, bearer(login(client, user.email))
 
 

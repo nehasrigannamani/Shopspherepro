@@ -17,6 +17,8 @@ from app.models.variant_inventory import (
     VariantInventoryMovement,
 )
 from app.services.notify import create_notification, notify_roles
+from app.services.order_fulfilment import close_open_backorders
+from app.services.order_benefits import reverse_order_benefits
 from app.services.payments import (
     PAID_STATUSES,
     RefundError,
@@ -35,7 +37,7 @@ STAFF_ROLES = {
 # Customers may cancel until the warehouse starts processing; staff can
 # still cancel while an order is being processed.
 CUSTOMER_CANCELLABLE = {"PLACED", "PENDING", "CONFIRMED"}
-STAFF_CANCELLABLE = CUSTOMER_CANCELLABLE | {"PROCESSING"}
+STAFF_CANCELLABLE = CUSTOMER_CANCELLABLE | {"PROCESSING", "BACKORDERED"}
 
 
 class OrderCancellationRequest(BaseModel):
@@ -85,6 +87,12 @@ def cancel_order(
         # 1. Release stock held by the order (product- or variant-level).
         for item in items:
             reason = f"Order {order.order_number} cancelled: {payload.reason}"
+            # Units already cancelled item-by-item (Phase 2) had their stock
+            # restored then; only restore what is still outstanding.
+            restore_qty = item.quantity - item.quantity_cancelled
+            if restore_qty <= 0:
+                item.fulfillment_status = "CANCELLED"
+                continue
             if item.variant_id is not None:
                 stock = (
                     db.query(VariantInventory)
@@ -110,16 +118,19 @@ def cancel_order(
                     detail=f"Inventory record is missing for product {item.product_id}",
                 )
 
-            stock.quantity_on_hand += item.quantity
+            stock.quantity_on_hand += restore_qty
             db.add(
                 move(
                     **{key: stock.id},
-                    quantity_change=item.quantity,
+                    quantity_change=restore_qty,
                     reason=reason[:255],
                     performed_by=current_user.id,
                 )
             )
+            item.quantity_cancelled = item.quantity
+            item.quantity_backordered = 0
             item.fulfillment_status = "CANCELLED"
+        close_open_backorders(db, order.id, current_user.id)
 
         # 2. Stop any unpaid gateway sessions for this order.
         pending = (
@@ -176,6 +187,7 @@ def cancel_order(
 
         # 4. Status, history and notifications.
         order.status = "CANCELLED"
+        reverse_order_benefits(db, order)   # promotion usage and spent points go back
         db.add(
             OrderStatusHistory(
                 order_id=order.id,

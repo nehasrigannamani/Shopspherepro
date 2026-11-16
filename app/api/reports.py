@@ -1,4 +1,3 @@
-
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -236,8 +235,6 @@ def report_summary(
             for currency, total in invoice_totals
         },
     }
-
-
 
 
 @router.get("/{report_name}")

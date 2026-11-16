@@ -46,17 +46,17 @@ def test_staff_cannot_use_customer_only_cart(client, h):
 
 def test_admin_creates_staff_and_it_is_verified(client, h):
     response = client.post("/users", headers=h(UserRole.ADMIN), json={
-        "full_name": "New Packer", "email": "packer@example.com",
+        "full_name": "New Packer", "email": "packer@test.local",
         "password": "Packer#12345", "role": "ORDER_MANAGER",
     })
     assert response.status_code == 201
     assert response.json()["is_verified"] is True
-    tokens = login(client, "packer@example.com", "Packer#12345")
+    tokens = login(client, "packer@test.local", "Packer#12345")
     assert client.get("/orders/admin/all", headers=bearer(tokens)).status_code == 200
 
 
 def test_admin_cannot_create_or_grant_admin_roles(client, h, users):
-    body = {"full_name": "Another Admin", "email": "a2@example.com", "password": "Admin#12345", "role": "ADMIN"}
+    body = {"full_name": "Another Admin", "email": "a2@test.local", "password": "Admin#12345", "role": "ADMIN"}
     assert client.post("/users", headers=h(UserRole.ADMIN), json=body).status_code == 403
     assert client.post("/users", headers=h(UserRole.SUPER_ADMIN), json=body).status_code == 201
 
@@ -114,7 +114,7 @@ def test_role_permission_matrix_endpoint(client, h):
 
 def test_state_changing_calls_are_audited_with_actor(client, db, h, users):
     client.post("/users", headers=h(UserRole.ADMIN), json={
-        "full_name": "Audit Me", "email": "audit@example.com", "password": "Audit#12345", "role": "SUPPORT_AGENT",
+        "full_name": "Audit Me", "email": "audit@test.local", "password": "Audit#12345", "role": "SUPPORT_AGENT",
     })
     db.expire_all()
     rows = db.query(AuditLog).filter(AuditLog.action == "POST /users").all()
@@ -123,7 +123,7 @@ def test_state_changing_calls_are_audited_with_actor(client, db, h, users):
 
 def test_denied_attempts_are_audited(client, db, h, users):
     client.post("/users", headers=h(UserRole.CUSTOMER), json={
-        "full_name": "Sneaky", "email": "s@example.com", "password": "Sneaky#12345", "role": "ADMIN",
+        "full_name": "Sneaky", "email": "s@test.local", "password": "Sneaky#12345", "role": "ADMIN",
     })
     db.expire_all()
     row = db.query(AuditLog).filter(AuditLog.outcome == "DENIED").first()
@@ -138,7 +138,7 @@ def test_audit_log_has_no_update_or_delete_api(client, h):
 
 def test_audit_log_listing_for_admin_only(client, h):
     client.post("/users", headers=h(UserRole.ADMIN), json={
-        "full_name": "Listed", "email": "l@example.com", "password": "Listed#12345", "role": "SUPPORT_AGENT",
+        "full_name": "Listed", "email": "l@test.local", "password": "Listed#12345", "role": "SUPPORT_AGENT",
     })
     response = client.get("/audit-logs", params={"action": "POST /users"}, headers=h(UserRole.ADMIN))
     assert response.status_code == 200 and len(response.json()) >= 1

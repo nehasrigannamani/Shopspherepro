@@ -52,6 +52,7 @@ def calculate_cart_summary(
         coupon_code=coupon_code,
         country=country,
         region=state,
+        user_id=current_user.id,
     )
 
     note = (

@@ -22,6 +22,8 @@ from app.models.user import UserRole
 from app.services import stripe_gateway
 from app.services.audit import write_audit_log
 from app.services.notify import create_notification, notify_roles
+from app.services.loyalty import reverse_earned_for_refund
+from app.services.payment_exceptions import raise_exception
 
 logger = logging.getLogger("shopsphere.payments")
 
@@ -32,9 +34,12 @@ SUCCESS_EVENTS = {
 FAILURE_EVENTS = {
     "checkout.session.async_payment_failed",
     "checkout.session.expired",
+    "payment.timed_out",  # raised by our own reconciliation, not by Stripe
 }
 REFUND_EVENTS = {"refund.updated", "charge.refund.updated"}
 PAID_STATUSES = {"SUCCEEDED", "PAID", "SUCCESS", "COMPLETED"}
+# Money was captured and the payment later refunded / flagged as a duplicate.
+SETTLED_STATUSES = {"REFUNDED", "DUPLICATE_PAID"}
 ACTIVE_REFUND_STATUSES = ("REQUESTED", "APPROVED", "PROCESSING", "SUCCEEDED")
 
 
@@ -134,6 +139,12 @@ def apply_payment_success(
             message="Gateway amount/currency differs from the order",
             payload=_safe_payload(event, session),
         )
+        raise_exception(
+            db, "AMOUNT_MISMATCH", payment=payment, key_suffix=event_id, severity="HIGH", notify=False,
+            summary="Gateway amount/currency differs from the order total",
+            details={"event_id": event_id, "expected_minor": expected,
+                     "gateway_minor": session.get("amount_total"), "gateway_currency": session.get("currency")},
+        )
         notify_roles(
             db,
             (UserRole.FINANCE_MANAGER, UserRole.ADMIN),
@@ -155,7 +166,7 @@ def apply_payment_success(
         )
         return "awaiting_funds"
 
-    if payment.status in PAID_STATUSES:
+    if payment.status in PAID_STATUSES | SETTLED_STATUSES:
         _record(
             db, payment, event_type=event_type, status="DUPLICATE_IGNORED",
             event_id=event_id,
@@ -163,6 +174,18 @@ def apply_payment_success(
             payload=_safe_payload(event, session),
         )
         return "already_paid"
+
+    other_paid = (
+        db.query(Payment.id)
+        .filter(
+            Payment.order_id == payment.order_id,
+            Payment.id != payment.id,
+            Payment.status.in_(PAID_STATUSES),
+        )
+        .first()
+    )
+    if other_paid is not None:
+        return _capture_duplicate(db, payment, order, session, event_type, event_id, event)
 
     payment.status = "SUCCEEDED"
     intent = session.get("payment_intent")
@@ -197,6 +220,11 @@ def apply_payment_success(
         )
     elif previous == "CANCELLED":
         # Money arrived for an order that was cancelled meanwhile: refund it.
+        raise_exception(
+            db, "LATE_PAYMENT_AFTER_CANCEL", payment=payment, key_suffix=event_id, severity="MEDIUM", notify=False,
+            summary="Payment arrived after the order was cancelled; a refund was queued",
+            details={"event_id": event_id},
+        )
         db.add(
             Refund(
                 payment_id=payment.id,
@@ -245,6 +273,42 @@ def apply_payment_success(
     return "payment_succeeded"
 
 
+def _capture_duplicate(db, payment, order, session, event_type, event_id, event) -> str:
+    """A second payment for an already-paid order was captured by the gateway.
+
+    The money is real, so it is kept as DUPLICATE_PAID, a full refund is queued
+    (processed by ``process_approved_refunds`` or by finance) and finance is told.
+    The order's own payment state is left alone.
+    """
+    payment.status = "DUPLICATE_PAID"
+    intent = session.get("payment_intent")
+    if intent:
+        payment.provider_payment_intent = str(intent)
+    refund = Refund(
+        payment_id=payment.id, order_id=order.id, requested_by=order.user_id,
+        amount=payment.amount, currency=payment.currency,
+        reason="Duplicate payment for an order that is already paid",
+        status="APPROVED", decision_note="Auto-approved by system: duplicate capture",
+    )
+    db.add(refund)
+    db.flush()
+    _record(
+        db, payment, event_type=event_type, status="DUPLICATE_PAID", event_id=event_id,
+        message="Second capture for an already-paid order; refund queued",
+        payload=_safe_payload(event, session),
+    )
+    raise_exception(
+        db, "DUPLICATE_CAPTURE", payment=payment, refund_id=refund.id, key_suffix=event_id, severity="HIGH",
+        summary="Order was paid twice; the duplicate is being refunded",
+        details={"event_id": event_id, "refund_id": refund.id, "amount": str(payment.amount)},
+    )
+    write_audit_log(
+        db, actor_user_id=None, action="PAYMENT_DUPLICATE_CAPTURE", entity_type="payment",
+        entity_id=payment.id, details={"order_id": order.id, "refund_id": refund.id}, commit=False,
+    )
+    return "duplicate_capture"
+
+
 def apply_payment_failure(
     db: Session,
     payment: Payment,
@@ -254,7 +318,7 @@ def apply_payment_failure(
     event_id: str,
     event: dict,
 ) -> str:
-    if payment.status in PAID_STATUSES:
+    if payment.status in PAID_STATUSES | SETTLED_STATUSES:
         _record(
             db, payment, event_type=event_type, status="DUPLICATE_IGNORED",
             event_id=event_id,
@@ -263,7 +327,10 @@ def apply_payment_failure(
         )
         return "ignored_after_success"
 
-    new_status = "EXPIRED" if event_type.endswith("expired") else "FAILED"
+    if event_type == "payment.timed_out":
+        new_status = "TIMED_OUT"
+    else:
+        new_status = "EXPIRED" if event_type.endswith("expired") else "FAILED"
     payment.status = new_status
 
     order = db.query(Order).filter(Order.id == payment.order_id).first()
@@ -300,17 +367,18 @@ def apply_payment_failure(
 
 def settle_refund_totals(db: Session, payment: Payment) -> None:
     """Update payment/order payment state after a refund succeeded."""
-    # The session runs with autoflush disabled, so write the refund status
-    # first; otherwise the SUM below would not see it.
-    db.flush()
     total = refunded_total(db, payment.id)
     order = db.query(Order).filter(Order.id == payment.order_id).first()
+    # A refunded *duplicate* capture leaves the order's real payment untouched.
+    is_duplicate = payment.status == "DUPLICATE_PAID"
     if total >= Decimal(str(payment.amount)):
         payment.status = "REFUNDED"
-        if order is not None:
+        if order is not None and not is_duplicate:
             order.payment_status = "REFUNDED"
-    elif total > 0 and order is not None:
+    elif total > 0 and order is not None and not is_duplicate:
         order.payment_status = "PARTIALLY_REFUNDED"
+    if order is not None and not is_duplicate and total > 0:
+        reverse_earned_for_refund(db, order, total, Decimal(str(payment.amount)))
 
 
 def _finish_refund(
@@ -325,6 +393,11 @@ def _finish_refund(
     else:
         refund.status = "FAILED"
         refund.failure_reason = reason
+        raise_exception(
+            db, "REFUND_FAILED", payment=payment, refund_id=refund.id, key_suffix=f"{refund.id}:{reason or ''}"[:60],
+            severity="HIGH", summary="Gateway could not complete a refund",
+            details={"refund_id": refund.id, "amount": str(refund.amount), "reason": reason},
+        )
 
     _record(
         db, payment,
@@ -383,7 +456,7 @@ def process_refund(
     payment = (
         db.query(Payment).filter(Payment.id == refund.payment_id).with_for_update().first()
     )
-    if payment is None or payment.status not in PAID_STATUSES | {"REFUNDED"}:
+    if payment is None or payment.status not in PAID_STATUSES | {"REFUNDED", "DUPLICATE_PAID"}:
         raise RefundError(409, "The original payment is not refundable")
 
     # An APPROVED refund is already counted in the committed total; a FAILED

@@ -21,25 +21,25 @@ from app.models.account import Address
 PASSWORD = "ShopSphere#2026"
 
 STAFF = [
-    ("Sam Super", "superadmin@shopsphere.example.com", UserRole.SUPER_ADMIN),
-    ("Ada Admin", "admin@shopsphere.example.com", UserRole.ADMIN),
-    ("Pia Product", "product.manager@shopsphere.example.com", UserRole.PRODUCT_MANAGER),
-    ("Ian Inventory", "inventory.manager@shopsphere.example.com", UserRole.INVENTORY_MANAGER),
-    ("Oli Orders", "order.manager@shopsphere.example.com", UserRole.ORDER_MANAGER),
-    ("Sue Support", "support@shopsphere.example.com", UserRole.SUPPORT_AGENT),
-    ("Dev Delivery", "delivery.manager@shopsphere.example.com", UserRole.DELIVERY_MANAGER),
-    ("Fay Finance", "finance.manager@shopsphere.example.com", UserRole.FINANCE_MANAGER),
+    ("Sam Super", "superadmin@shopsphere.test", UserRole.SUPER_ADMIN),
+    ("Ada Admin", "admin@shopsphere.test", UserRole.ADMIN),
+    ("Pia Product", "product.manager@shopsphere.test", UserRole.PRODUCT_MANAGER),
+    ("Ian Inventory", "inventory.manager@shopsphere.test", UserRole.INVENTORY_MANAGER),
+    ("Oli Orders", "order.manager@shopsphere.test", UserRole.ORDER_MANAGER),
+    ("Sue Support", "support@shopsphere.test", UserRole.SUPPORT_AGENT),
+    ("Dev Delivery", "delivery.manager@shopsphere.test", UserRole.DELIVERY_MANAGER),
+    ("Fay Finance", "finance.manager@shopsphere.test", UserRole.FINANCE_MANAGER),
 ]
 CUSTOMERS = [
-    ("Chris Customer", "customer@shopsphere.example.com", "+919000000001"),
-    ("Casey Customer", "customer2@shopsphere.example.com", "+919000000002"),
+    ("Chris Customer", "customer@shopsphere.test", "+919000000001"),
+    ("Casey Customer", "customer2@shopsphere.test", "+919000000002"),
 ]
 
 
 def main() -> None:
     db = SessionLocal()
     try:
-        if db.query(User).filter(User.email == "admin@shopsphere.example.com").first():
+        if db.query(User).filter(User.email == "admin@shopsphere.test").first():
             print("Sample data already present - nothing to do.")
             return
 
@@ -126,7 +126,7 @@ def main() -> None:
                          product_id=cable.id, starts_at=now - timedelta(days=1),
                          expires_at=now + timedelta(days=30)))
 
-        db.add(Supplier(name="Acme Components", contact_person="Raj", email="sales@acme.example.com",
+        db.add(Supplier(name="Acme Components", contact_person="Raj", email="sales@acme.test",
                         phone="+919111111111", address_line1="1 Industrial Area",
                         city="Chennai", state="Tamil Nadu", postal_code="600001", country="IN"))
 

@@ -14,6 +14,9 @@ from app.models.order_status_history import OrderStatusHistory
 from app.models.user import User, UserRole
 from app.models.variant_inventory import VariantInventoryMovement
 from app.schemas.order import CheckoutRequest, OrderDetailResponse
+from app.services.reservations import convert_user_holds
+from app.services.loyalty import redeem as spend_loyalty_points
+from app.services.order_benefits import record_redemptions
 from app.services.notify import create_notification, notify_roles
 from app.services.pricing import (  # noqa: F401  (re-exported for callers)
     calculate_tax,
@@ -97,6 +100,10 @@ def checkout(
         if not cart_items:
             raise HTTPException(status_code=409, detail="Cart is empty")
 
+        # Release this customer's checkout holds (Phase 2) so their own
+        # reservation does not block the stock check; the order deducts stock itself.
+        converted_holds = convert_user_holds(db, current_user.id)
+
         ship = resolve_shipping(db, payload, current_user)
 
         billing_address_id = None
@@ -118,6 +125,8 @@ def checkout(
             country=ship["country"],
             region=ship["state"],
             lock=True,
+            user_id=current_user.id,
+            redeem_points=payload.redeem_points,
         )
 
         order = Order(
@@ -131,6 +140,8 @@ def checkout(
             shipping_total=pricing.shipping_total,
             tax_total=pricing.tax_total,
             grand_total=pricing.grand_total,
+            loyalty_points_redeemed=pricing.loyalty_points,
+            loyalty_discount=pricing.loyalty_discount,
             coupon_code=pricing.coupon.code if pricing.coupon else None,
             shipping_method_name=pricing.shipping_method.name,
             shipping_address_id=ship["address_id"],
@@ -147,6 +158,8 @@ def checkout(
         )
         db.add(order)
         db.flush()
+        for hold in converted_holds:
+            hold.order_id = order.id
 
         low_stock_alerts = []
         for line in pricing.lines:
@@ -203,11 +216,11 @@ def checkout(
                     (line.product, variant, stock.quantity_on_hand, stock.low_stock_threshold)
                 )
 
-            if line.promotion is not None:
-                line.promotion.used_count += 1
-
-        if pricing.coupon is not None:
-            pricing.coupon.used_count += 1
+        # One use per promotion/coupon per order, with a redemption record for each (Phase 2).
+        record_redemptions(db, order, pricing, current_user.id)
+        if pricing.loyalty_points:
+            # Re-checked under row locks: concurrent checkouts cannot spend the same points twice.
+            spend_loyalty_points(db, current_user.id, pricing.loyalty_points, order.id)
 
         db.add(
             OrderStatusHistory(

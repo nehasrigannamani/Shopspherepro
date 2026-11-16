@@ -60,6 +60,15 @@ from app.models.supplier import Supplier
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
 from app.models.supplier_invoice import SupplierInvoice
 from app.models.audit_log import AuditLog
+from app.models.idempotency import IdempotencyKey
+from app.models.pricing_loyalty import (
+    CustomerSegment, CustomerSegmentMember, LoyaltyLedger, LoyaltyRule, PromotionRedemption,
+)
+from app.models.payment_ops import PaymentException, PaymentReconciliation, PaymentSettlement
+from app.models.order_fulfilment import (
+    OrderBackorder, OrderItemCancellation, OrderShipment, OrderShipmentItem,
+)
+from app.models.inventory_reservation import InventoryReservation
 
 __all__ = [
     "User","UserRole","Product","Category","Brand","ProductVariant","ProductMedia","MediaType",
@@ -71,7 +80,7 @@ __all__ = [
 "AuthSession","RefreshToken","EmailVerificationToken","Address","UserActivity",
 "ProfileChangeHistory","DeactivationRequest","BackgroundJob","ReportSchedule",
 "Notification","NotificationDelivery","ProductReview","ProductQuestion","SupportTicket",
-"SupportTicketMessage","Supplier","PurchaseOrder","PurchaseOrderItem","SupplierInvoice","AuditLog",
+"SupportTicketMessage","Supplier","PurchaseOrder","PurchaseOrderItem","SupplierInvoice","AuditLog","IdempotencyKey","CustomerSegment","CustomerSegmentMember","LoyaltyLedger","LoyaltyRule","PromotionRedemption","PaymentException","PaymentReconciliation","PaymentSettlement","OrderBackorder","OrderItemCancellation","OrderShipment","OrderShipmentItem","InventoryReservation",
 
 
 ]

@@ -95,3 +95,15 @@ class Promotion(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    # Phase 2 pricing rules ------------------------------------------------
+    # ALL-target promotions act as cart promotions; these columns refine them.
+    min_cart_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    max_discount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # cap across the whole cart
+    # False = exclusive (cannot combine with any other promotion on the line)
+    stackable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    allow_with_coupon: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
+    per_customer_limit: Mapped[int | None] = mapped_column(Integer)
+    customer_segment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customer_segments.id", ondelete="SET NULL"), nullable=True
+    )

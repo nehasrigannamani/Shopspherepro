@@ -4,7 +4,9 @@ from app.models.user import UserRole
 R = UserRole
 
 ADMINS = (R.SUPER_ADMIN, R.ADMIN)
-STAFF_ROLES = tuple(role for role in UserRole if role != R.CUSTOMER)
+STAFF_ROLES = tuple(
+    role for role in UserRole if role not in (R.CUSTOMER, R.SELLER)
+)
 
 ROLE_PERMISSIONS: dict[UserRole, list[str]] = {
     R.SUPER_ADMIN: ["*"],
@@ -35,6 +37,10 @@ ROLE_PERMISSIONS: dict[UserRole, list[str]] = {
     R.FINANCE_MANAGER: [
         "payments:read", "refunds:manage", "invoices:manage",
         "reports:read", "cod:reconcile",
+    ],
+    R.SELLER: [
+        "seller:own_products", "seller:own_orders", "seller:own_sales",
+        "seller:fulfilment_updates",
     ],
     R.CUSTOMER: [
         "catalog:read", "cart:manage", "orders:own", "payments:own",

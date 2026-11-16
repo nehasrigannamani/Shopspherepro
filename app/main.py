@@ -67,6 +67,19 @@ from app.api.users import router as users_router
 from app.api.profile import router as profile_router
 from app.api.addresses import router as addresses_router
 from app.core.middleware import AuditMiddleware
+from app.core.errors import install_error_handlers
+from app.core.log_filter import install_log_redaction
+from app.api.v2.reservations import router as reservations_router
+from app.api.v2.orders import router as orders_v2_router
+from app.api.v2.loyalty import router as loyalty_router
+from app.api.v2.pricing import router as pricing_v2_router
+from app.api.v2.promotions import coupons_router as coupons_v2_router
+from app.api.v2.promotions import promotions_router as promotions_v2_router
+from app.api.v2.promotions import segments_router
+from app.api.v2.payments import (
+    finance_router, order_payments_router, payments_router as payments_v2_router,
+    refunds_router as refunds_v2_router,
+)
 from app.services.jobs import scheduler_tick
 
 
@@ -101,6 +114,8 @@ app = FastAPI(
 )
 
 app.add_middleware(AuditMiddleware)
+install_error_handlers(app)
+install_log_redaction()
 
 
 @app.get("/", tags=["Health"])
@@ -168,3 +183,16 @@ app.include_router(audit_logs_router)
 app.include_router(dashboard_router)
 app.include_router(reports_router)
 app.include_router(report_exports_router)
+
+# ---- Phase 2 ----
+app.include_router(reservations_router)
+app.include_router(orders_v2_router)
+app.include_router(pricing_v2_router)
+app.include_router(promotions_v2_router)
+app.include_router(coupons_v2_router)
+app.include_router(segments_router)
+app.include_router(loyalty_router)
+app.include_router(order_payments_router)
+app.include_router(payments_v2_router)
+app.include_router(refunds_v2_router)
+app.include_router(finance_router)

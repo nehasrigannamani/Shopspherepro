@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    ForeignKey,
     Integer,
     Numeric,
     String,
@@ -103,4 +104,11 @@ class Coupon(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    # Phase 2 eligibility rules
+    max_discount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    per_customer_limit: Mapped[int | None] = mapped_column(Integer)
+    customer_segment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customer_segments.id", ondelete="SET NULL"), nullable=True
     )

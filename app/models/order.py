@@ -53,6 +53,13 @@ class Order(Base):
         Numeric(12, 2), default=Decimal("0.00"), nullable=False
     )
     grand_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    # Phase 2 loyalty: points spent at checkout and their currency value (included in discount_total)
+    loyalty_points_redeemed: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    loyalty_discount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), default=Decimal("0.00"), server_default="0.00", nullable=False
+    )
 
     coupon_code: Mapped[str | None] = mapped_column(String(50))
     shipping_method_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -128,3 +135,19 @@ class OrderItem(Base):
         Numeric(12, 2), default=Decimal("0.00"), nullable=False
     )
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    # Phase 2 fulfilment counters (units). Invariants:
+    #   shipped + cancelled <= quantity,  delivered <= shipped,
+    #   backordered <= quantity - cancelled - shipped
+    quantity_shipped: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    quantity_delivered: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    quantity_cancelled: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    quantity_backordered: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )

@@ -216,7 +216,7 @@ def test_deactivated_schedule_does_not_run(client, db, h, catalog):
 
 def register(client):
     return client.post("/auth/register", json={
-        "full_name": "Mail Test", "email": "mail@example.com", "password": "Sup3rSecret!"})
+        "full_name": "Mail Test", "email": "mail@test.local", "password": "Sup3rSecret!"})
 
 
 def test_queued_email_is_sent_by_dispatch(client, db, h):
